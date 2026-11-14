@@ -1,0 +1,7 @@
+generator/
+termux-packages-main/
+termux-apps-main/
+artifacts/
+*.apk
+*.zip
+*.deb

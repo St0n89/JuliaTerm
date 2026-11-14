@@ -1,0 +1,22 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# JuliaTerm: update Julia inside the Debian proot via juliaup.
+# The /data/data/com.termux path below is rewritten to the JuliaTerm package
+# id at bootstrap build time; do not "fix" it here.
+set -u
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DISTRO=debian
+ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"
+
+[ -d "$ROOTFS" ] || {
+    echo "juliaterm: Debian rootfs not installed yet; run 'julia' first." >&2
+    exit 1
+}
+
+exec proot-distro login "$DISTRO" -- /bin/sh -c 'PATH="$HOME/.juliaup/bin:$PATH"
+export PATH
+command -v juliaup >/dev/null 2>&1 || {
+    echo "juliaterm: juliaup not installed yet; run julia once first." >&2
+    exit 1
+}
+juliaup update && juliaup add stable && echo "juliaterm: Julia updated."'

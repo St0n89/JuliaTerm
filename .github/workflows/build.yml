@@ -1,0 +1,82 @@
+name: Build JuliaTerm APK
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  GENERATOR_REPO: Netsnake-TN/termux-generator-fork
+  GENERATOR_REF: 737eab4e93f77a36d4ff33643d47c8b288030900
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout JuliaTerm
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af || true
+
+      - name: Install dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends git patch unzip file
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Clone termux-generator (pinned)
+        run: |
+          git clone --filter=blob:none "https://github.com/${GENERATOR_REPO}.git" generator
+          git -C generator fetch --depth 1 origin "$GENERATOR_REF"
+          git -C generator checkout FETCH_HEAD
+
+      - name: Build bootstrap + APK
+        run: bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator"
+
+      - name: Collect artifacts
+        id: collect
+        run: |
+          mkdir -p artifacts
+          cp generator/*universal*.apk artifacts/JuliaTerm-universal.apk 2>/dev/null || cp generator/*.apk artifacts/ 2>/dev/null || true
+          find generator -maxdepth 1 \( -name "*.apk" -o -name "*.zip" \) -exec ls -lah {} \; || true
+          echo "count=$(ls -A artifacts 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        if: steps.collect.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: JuliaTerm-apk
+          path: artifacts/*
+          retention-days: 30
+
+      - name: Release
+        if: steps.collect.outputs.count != '0'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          name: JuliaTerm v0.1.0
+          files: artifacts/*
+          body: |
+            JuliaTerm v0.1.0
+
+            Termux-free Julia REPL for Android (aarch64).
+
+            - Package id: com.st0n89.juliaterm
+            - Single APK with embedded minimal bootstrap
+              (bash, coreutils, curl, proot, proot-distro, juliaterm-scripts)
+            - First `julia` run installs Debian proot + juliaup
+            - `julia-update` updates Julia via juliaup
+            - Debug-signed (Termux test key). Install via sideloading.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

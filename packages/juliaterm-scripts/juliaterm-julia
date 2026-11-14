@@ -1,0 +1,40 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# JuliaTerm: start a full Julia REPL.
+# The /data/data/com.termux path below is rewritten to the JuliaTerm package
+# id (com.st0n89.juliaterm) at bootstrap build time by the name-replacement
+# step, so do not "fix" it here.
+set -u
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DISTRO=debian
+ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"
+JT_DIR="$ROOTFS/root/.juliaterm"
+
+command -v proot-distro >/dev/null 2>&1 || {
+    echo "juliaterm: proot-distro not found (broken bootstrap?)" >&2
+    exit 1
+}
+
+if [ ! -d "$ROOTFS" ]; then
+    echo "juliaterm: installing Debian rootfs (one-time download, ~40 MB)..."
+    proot-distro install "$DISTRO" || exit 1
+fi
+
+mkdir -p "$JT_DIR"
+cat > "$JT_DIR/jt" <<'EOS'
+#!/bin/sh
+# JuliaTerm boot script; runs inside the Debian proot as root.
+PATH="$HOME/.juliaup/bin:$PATH"
+export PATH
+if ! command -v julia >/dev/null 2>&1; then
+    echo "juliaterm: installing juliaup + Julia (one-time download, ~350 MB)..."
+    command -v curl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -yqq curl ca-certificates; }
+    curl -fsSL https://install.julialang.org | sh -s -- --yes
+fi
+exec julia "$@"
+EOS
+chmod 755 "$JT_DIR/jt"
+
+mkdir -p "$HOME/.juliaterm"
+touch "$HOME/.juliaterm/installed"
+exec proot-distro login "$DISTRO" -- /root/.juliaterm/jt "$@"
