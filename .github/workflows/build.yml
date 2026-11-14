@@ -3,6 +3,10 @@ name: Build JuliaTerm APK
 on:
   push:
     branches: [main]
+    paths:
+      - "build-juliaterm.sh"
+      - "packages/**"
+      - ".github/workflows/build.yml"
   workflow_dispatch:
 
 env:
