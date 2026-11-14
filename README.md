@@ -27,24 +27,20 @@ permission, no adb: JuliaTerm is its own terminal app (a fork of
 
 ## Build
 
-The workflow is manual-only (`workflow_dispatch`), because a build takes
-roughly 1.5 to 3 hours of Actions time:
-
-**Actions tab -> Build JuliaTerm APK -> Run workflow.**
+The workflow runs automatically on changes to `build-juliaterm.sh`,
+`packages/**` or the workflow itself, and can also be started manually
+(Actions tab -> Build JuliaTerm APK -> Run workflow). A build takes roughly
+1.5 to 3 hours.
 
 Output: release `v0.1.0` with `JuliaTerm-universal.apk` plus the raw
 per-ABI APKs as workflow artifact.
 
 ## Notes
 
-- **Actions minutes**: the repo is private, so each build consumes real
-  quota (~120-180 min). Keep the workflow manual; do not add `push`
-  triggers.
 - **License**: the generated APK is a GPLv3 derivative of termux-app. This
-  repository contains the full build system (build-juliaterm.sh + package
-  sources + pinned generator ref), which constitutes the complete
-  corresponding source. If you distribute the APK to someone, point them at
-  this repository (or a copy of it).
+  public repository contains the full build system (build-juliaterm.sh +
+  package sources + pinned generator ref), which constitutes the complete
+  corresponding source for the APK.
 - The generator pinned in the workflow is
   [Netsnake-TN/termux-generator-fork](https://github.com/Netsnake-TN/termux-generator-fork)
   (fork of robertkirkman/termux-generator); its scripts do the heavy
