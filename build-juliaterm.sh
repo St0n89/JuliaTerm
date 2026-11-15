@@ -54,12 +54,13 @@ download() {
     rm -rf termux-apps-main/termux-am-library/
 }
 
-# App patches that target repos we do not clone (or do not need):
-# - local-termux-gui.patch                -> termux-gui (not built)
-# - disable-termux-x11-signature-check.patch -> termux-x11 (not built)
-# - local-maven.patch                     -> tasker/float/api/widget only (not
-#   built; termux-app itself uses project includes, not mavenLocal)
-JULIATERM_SKIP_APP_PATCHES="local-termux-gui.patch disable-termux-x11-signature-check.patch local-maven.patch"
+# App patches that are skipped:
+# - local-termux-gui.patch, disable-termux-x11-signature-check.patch,
+#   local-maven.patch: target repos we do not clone or do not need.
+# - multi-window.patch: its TerminalView.java hunks have drifted from current
+#   upstream termux-app (Nov 2026). Pure UX feature (split-screen); skipped
+#   for now, can be re-ported onto current upstream later.
+JULIATERM_SKIP_APP_PATCHES="local-termux-gui.patch disable-termux-x11-signature-check.patch local-maven.patch multi-window.patch"
 apply_patches_filtered() {
     local srcdir targetdir skiplist patchfile base
     srcdir="$(realpath "$1")"
