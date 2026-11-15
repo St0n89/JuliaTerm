@@ -30,6 +30,11 @@ source "$GENERATOR_HOME/scripts/termux_generator_steps.sh"
 export TERMUX_APP__PACKAGE_NAME="com.st0n89.juliaterm"
 export TERMUX_APP_TYPE="f-droid"
 export TERMUX_GENERATOR_PLUGIN=""
+# The generator's step functions reference these; its own build-termux.sh
+# defines them, but we source the functions directly, so define them here
+# (empty = SSH bundling disabled) or set -u kills the build.
+export ENABLE_SSH_SERVER=""
+export DEFAULT_PASSWORD="changeme"
 ADDITIONAL_PACKAGES="juliaterm-scripts,less,ca-certificates"
 BOOTSTRAP_ARCHITECTURES="aarch64"
 export DISABLE_BOOTSTRAP_SECOND_STAGE=1
