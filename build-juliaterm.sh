@@ -87,6 +87,13 @@ download
 mkdir -p termux-packages-main/packages/
 cp -r "$JULIATERM_HOME/packages/juliaterm-scripts" termux-packages-main/packages/
 
+# Generator patch drift fix: the pinned generator's builder-name-change.patch
+# no longer fits current termux-packages (upstream changed
+# scripts/free-space.sh; the generator's hunk #1 there was a no-op and is
+# dropped in our copy, which is adapted to current upstream context).
+cp "$JULIATERM_HOME/patches/builder-name-change.patch" \
+    "f-droid-patches/bootstrap-patches/builder-name-change.patch"
+
 patch_bootstraps
 
 # First-run hint, appended after the generator bashrc patches.
