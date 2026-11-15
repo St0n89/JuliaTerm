@@ -45,7 +45,7 @@ export DISABLE_TASKER=1 DISABLE_FLOAT=1 DISABLE_WIDGET=1 DISABLE_API=1
 export DISABLE_BOOT=1 DISABLE_STYLING=1 DISABLE_GUI=1 DISABLE_X11=1
 
 # Trimmed download: termux-packages + termux-app (+ termux-am-library, which
-# termux-app needs as a local project via the generator app patches).
+# termux-app needs as a local project via the local-termux-am-library patch).
 download() {
     git clone --depth 1 https://github.com/termux/termux-packages.git termux-packages-main
     git clone --depth 1 https://github.com/termux/termux-app.git termux-apps-main/termux-app
@@ -54,8 +54,12 @@ download() {
     rm -rf termux-apps-main/termux-am-library/
 }
 
-# Apply generator app patches, skipping patches for apps we do not build.
-JULIATERM_SKIP_APP_PATCHES="local-termux-gui.patch"
+# App patches that target repos we do not clone (or do not need):
+# - local-termux-gui.patch                -> termux-gui (not built)
+# - disable-termux-x11-signature-check.patch -> termux-x11 (not built)
+# - local-maven.patch                     -> tasker/float/api/widget only (not
+#   built; termux-app itself uses project includes, not mavenLocal)
+JULIATERM_SKIP_APP_PATCHES="local-termux-gui.patch disable-termux-x11-signature-check.patch local-maven.patch"
 apply_patches_filtered() {
     local srcdir targetdir skiplist patchfile base
     srcdir="$(realpath "$1")"
