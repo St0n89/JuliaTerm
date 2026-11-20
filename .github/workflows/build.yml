@@ -38,11 +38,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # No android-actions/setup-android here: on current runners it downloads
-      # cmdline-tools 16.0, whose "sdkmanager --licenses" prompts interactively
-      # ("Review licenses that have not been accepted (y/N)?") and the action
-      # fails. The runner's preinstalled SDK (ANDROID_HOME) with pre-accepted
-      # licenses is sufficient; AGP auto-installs missing components.
+      # No setup-android step: its sdkmanager would prompt interactively for
+      # licenses. The runner's preinstalled SDK with pre-accepted licenses is
+      # sufficient; AGP auto-installs missing SDK components.
 
       - name: Clone termux-generator (pinned)
         run: |
@@ -55,8 +53,8 @@ jobs:
           df -h / || true
           bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator" 2>&1 | tee "${RUNNER_TEMP}/build.log"
 
-      # The web UI truncates huge step logs; this is why run #9's real error
-      # stayed invisible. This short step prints the crash reason in full.
+      # GitHub truncates huge step logs in the web UI (this hid run #9's and
+      # run #10's real endings). This short step prints the crash reason fully.
       - name: Diagnose failure
         if: failure()
         run: |
@@ -78,12 +76,22 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # Run #10 was green but found ZERO apks at generator/ root, so artifact
+      # upload and release silently skipped. This step now searches the whole
+      # workspace and reports every .apk path, so the next run shows where the
+      # APKs actually land.
       - name: Collect artifacts
         id: collect
         run: |
           mkdir -p artifacts
-          cp generator/*universal*.apk artifacts/JuliaTerm-universal.apk 2>/dev/null || cp generator/*.apk artifacts/ 2>/dev/null || true
-          find generator -maxdepth 1 \( -name "*.apk" -o -name "*.zip" \) -exec ls -lah {} \; || true
+          echo "=== every .apk under the workspace ==="
+          apk_count=$(find "$GITHUB_WORKSPACE" -name "*.apk" -not -path "*/.git/*" | wc -l)
+          echo "APK files found: $apk_count"
+          find "$GITHUB_WORKSPACE" -name "*.apk" -not -path "*/.git/*" -exec ls -lah {} + 2>/dev/null || true
+          find "$GITHUB_WORKSPACE" -name "*.apk" -not -path "*/.git/*" -exec cp {} artifacts/ \; 2>/dev/null || true
+          if [ "$(ls artifacts/*universal*.apk 2>/dev/null | wc -l)" -eq 1 ]; then
+            mv artifacts/*universal*.apk artifacts/JuliaTerm-universal.apk
+          fi
           echo "count=$(ls -A artifacts 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
