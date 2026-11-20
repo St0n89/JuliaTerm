@@ -51,7 +51,32 @@ jobs:
           git -C generator checkout FETCH_HEAD
 
       - name: Build bootstrap + APK
-        run: bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator"
+        run: |
+          df -h / || true
+          bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator" 2>&1 | tee "${RUNNER_TEMP}/build.log"
+
+      # The web UI truncates huge step logs; this is why run #9's real error
+      # stayed invisible. This short step prints the crash reason in full.
+      - name: Diagnose failure
+        if: failure()
+        run: |
+          echo "=== Disk usage after failure ==="
+          df -h || true
+          echo "=== Last 250 lines of build.log ==="
+          if [ -f "${RUNNER_TEMP}/build.log" ]; then
+            tail -n 250 "${RUNNER_TEMP}/build.log" || true
+          else
+            echo "build.log not found (step may have failed before tee started)"
+          fi
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Collect artifacts
         id: collect
