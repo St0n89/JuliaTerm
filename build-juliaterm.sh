@@ -111,10 +111,8 @@ cat >> termux-packages-main/packages/bash/etc-bash.bashrc <<'EOF'
 
 # JuliaTerm: hint until the first successful 'julia' run.
 if [ -t 1 ] && [ ! -e "${HOME}/.juliaterm/installed" ]; then
-    printf '%s
-' "JuliaTerm: type 'julia' to set up and start the Julia REPL."
-    printf '%s
-' "           (first run downloads a Debian proot rootfs and juliaup, ~350 MB)"
+    printf '%s\n' "JuliaTerm: type 'julia' to set up and start the Julia REPL."
+    printf '%s\n' "           (first run downloads a Debian proot rootfs and juliaup, ~350 MB)"
 fi
 EOF
 
