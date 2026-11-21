@@ -53,8 +53,8 @@ jobs:
           df -h / || true
           bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator" 2>&1 | tee "${RUNNER_TEMP}/build.log"
 
-      # GitHub truncates huge step logs in the web UI (this hid run #9's and
-      # run #10's real endings). This short step prints the crash reason fully.
+      # GitHub truncates huge step logs in the web UI (this hid run #9's, #10's
+      # and #11's real endings). This short step prints the crash reason fully.
       - name: Diagnose failure
         if: failure()
         run: |
@@ -67,8 +67,24 @@ jobs:
             echo "build.log not found (step may have failed before tee started)"
           fi
 
-      - name: Upload build log on failure
-        if: failure()
+      # Runs #10 and #11 were green but produced ZERO apks anywhere in the
+      # workspace and no release (silent skip). This report runs on success
+      # too and shows the true end state of the build, fully readable.
+      - name: Post-build report
+        if: always()
+        run: |
+          GEN="$GITHUB_WORKSPACE/generator"
+          echo "=== build.log tail (last 60 lines) ==="
+          tail -n 60 "${RUNNER_TEMP}/build.log" 2>/dev/null || echo "no build.log"
+          echo "=== generator/ root ==="
+          ls -lah "$GEN" || true
+          echo "=== termux-apps-main/ ==="
+          ls -lah "$GEN/termux-apps-main" || true
+          echo "=== termux-app gradle outputs ==="
+          find "$GEN/termux-apps-main/termux-app/app/build/outputs" -maxdepth 4 -type f -exec ls -lah {} + 2>/dev/null || echo "NO GRADLE OUTPUTS DIR"
+
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
