@@ -111,8 +111,10 @@ cat >> termux-packages-main/packages/bash/etc-bash.bashrc <<'EOF'
 
 # JuliaTerm: hint until the first successful 'julia' run.
 if [ -t 1 ] && [ ! -e "${HOME}/.juliaterm/installed" ]; then
-    printf '%s\n' "JuliaTerm: type 'julia' to set up and start the Julia REPL."
-    printf '%s\n' "           (first run downloads a Debian proot rootfs and juliaup, ~350 MB)"
+    printf '%s
+' "JuliaTerm: type 'julia' to set up and start the Julia REPL."
+    printf '%s
+' "           (first run downloads a Debian proot rootfs and juliaup, ~350 MB)"
 fi
 EOF
 
@@ -122,7 +124,29 @@ patch_apps
 portable_sed_i 's|manifestPlaceholders.TERMUX_APP_NAME = ".*"|manifestPlaceholders.TERMUX_APP_NAME = "JuliaTerm"|' \
     termux-apps-main/termux-app/app/build.gradle
 
+# termux-packages' scripts/free-space.sh runs on the HOST at the start of
+# build_bootstraps (the generator calls it when CI=true) and deletes
+# /opt/hostedtoolcache, /usr/share/java and the temurin apt packages: the JDK
+# installed by actions/setup-java is gone by the time build_apps starts
+# gradle ("JAVA_HOME is set to an invalid directory", run #14).
+# Mirror the JDK into the generator clone (free-space.sh never touches
+# /home/runner/work) and restore JAVA_HOME for gradle afterwards.
+JULIATERM_JDK_MIRROR="$GENERATOR_HOME/.juliaterm-jdk"
+if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/java" ]; then
+    echo "[juliaterm] mirroring JDK ${JAVA_HOME} -> ${JULIATERM_JDK_MIRROR}"
+    rm -rf "$JULIATERM_JDK_MIRROR"
+    cp -a "$JAVA_HOME" "$JULIATERM_JDK_MIRROR"
+fi
+
 build_bootstraps
+
+if [ ! -x "${JAVA_HOME:-}/bin/java" ] && [ -x "$JULIATERM_JDK_MIRROR/bin/java" ]; then
+    echo "[juliaterm] JAVA_HOME was removed by free-space.sh; restoring mirrored JDK"
+    export JAVA_HOME="$JULIATERM_JDK_MIRROR"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    echo "[juliaterm] JAVA_HOME=$JAVA_HOME"
+fi
+
 move_bootstraps
 build_apps
 move_apks
