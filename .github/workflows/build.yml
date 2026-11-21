@@ -48,8 +48,11 @@ jobs:
           git -C generator fetch --depth 1 origin "$GENERATOR_REF"
           git -C generator checkout FETCH_HEAD
 
+      # pipefail: the tee pipe below masked the real exit code in runs
+      # #10-#12 (the build failed, the step still reported green).
       - name: Build bootstrap + APK
         run: |
+          set -o pipefail
           df -h / || true
           bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator" 2>&1 | tee "${RUNNER_TEMP}/build.log"
 
