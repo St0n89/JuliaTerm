@@ -123,6 +123,8 @@ juliaterm_ui_customize() {
 <resources>
     <!-- JuliaTerm branding: deep aubergine launch/window background. -->
     <color name="juliaterm_launch_background">#FF150E24</color>
+    <!-- JuliaTerm phase 2: light text/icons on the aubergine drawer. -->
+    <color name="juliaterm_drawer_text">#FFE8E3F3</color>
 </resources>
 EOC
 
@@ -136,11 +138,135 @@ EOC
     echo "[juliaterm] UI customization applied (immersive fullscreen + launch background)."
 }
 
+# JuliaTerm UI phase 2 (v0.3.0): in-app workdir picker button in the
+# drawer + dark drawer rebrand. The wrapper side of the feature (bind the
+# chosen phone folder to /workdir, cd there) lives in
+# packages/juliaterm-scripts and reads files/home/.juliaterm/workdir,
+# which the picker writes via Activity.getFilesDir().
+# Same discipline as phase 1: every edit pins one stable anchor line,
+# verifies it occurs exactly once, applies the change, and verifies the
+# result. A drifted anchor fails the build loudly.
+juliaterm_ui_customize_phase2() {
+    local app=termux-apps-main/termux-app
+    local act="$app/app/src/main/java/com/termux/app/TermuxActivity.java"
+    local layout="$app/app/src/main/res/layout/activity_termux.xml"
+    local itemxml="$app/app/src/main/res/layout/item_terminal_sessions_list.xml"
+    local themes="$app/app/src/main/res/values/themes.xml"
+    local themesnight="$app/app/src/main/res/values-night/themes.xml"
+    local insert hits anchor line nextline
+
+    # 1. Picker class: shipped whole in this repo (a new file needs no
+    #    diff, so it cannot drift). Copied in BEFORE the name replacement:
+    #    its "package com.termux.app" line and its directory are migrated
+    #    with the rest of the tree.
+    if [ ! -f "$JULIATERM_HOME/app-src/JuliaTermWorkdirDialog.java" ]; then
+        echo "[juliaterm] ERROR: app-src/JuliaTermWorkdirDialog.java is missing" >&2
+        return 1
+    fi
+    cp "$JULIATERM_HOME/app-src/JuliaTermWorkdirDialog.java" \
+        "$app/app/src/main/java/com/termux/app/"
+
+    # 2. Terminal hook: wire the drawer button where the keyboard toggle
+    #    is set up (anchor: the method signature line).
+    anchor='private void setToggleKeyboardView() {'
+    if [ "$(grep -c -F "$anchor" "$act" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: setToggleKeyboardView anchor not found exactly once in TermuxActivity.java (upstream changed?)" >&2
+        return 1
+    fi
+    insert='        // JuliaTerm: drawer workdir picker button (long-press clears the choice).
+        findViewById(R.id.juliaterm_workdir_button).setOnClickListener(v -> {
+            JuliaTermWorkdirDialog.show(TermuxActivity.this);
+            getDrawer().closeDrawers();
+        });
+        findViewById(R.id.juliaterm_workdir_button).setOnLongClickListener(v -> {
+            JuliaTermWorkdirDialog.clear(TermuxActivity.this);
+            return true;
+        });'
+    awk -v ins="$insert" '/private void setToggleKeyboardView\(\) \{/ { print; print ins; next } { print }' "$act" > "$act.jt" && mv "$act.jt" "$act"
+    if [ "$(grep -c -F 'JuliaTermWorkdirDialog.show(TermuxActivity.this)' "$act" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: workdir button hook did not land in TermuxActivity.java" >&2
+        return 1
+    fi
+
+    # 3. The button itself: a full-width row right under the keyboard /
+    #    new-session row of the drawer (i.e. next to the keyboard toggle).
+    #    Anchor: the new-session button; verify its row closes next line.
+    anchor='android:text="@string/action_new_session" />'
+    if [ "$(grep -c -F "$anchor" "$layout" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: new-session button anchor not found exactly once in activity_termux.xml (upstream changed?)" >&2
+        return 1
+    fi
+    line=$(grep -n -F "$anchor" "$layout" | cut -d: -f1)
+    nextline=$(sed -n "$((line + 1))p" "$layout")
+    case "$nextline" in
+        *"</LinearLayout>"*) : ;;
+        *) echo "[juliaterm] ERROR: expected the button bar to close on the line after the new-session button" >&2; return 1 ;;
+    esac
+    insert='                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/juliaterm_workdir_button"
+                    style="?android:attr/buttonBarButtonStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Select workdir"
+                    android:textColor="@color/juliaterm_drawer_text" />'
+    awk -v ins="$insert" -v at="$((line + 2))" 'NR == at { print ins } { print }' "$layout" > "$layout.jt" && mv "$layout.jt" "$layout"
+    if [ "$(grep -c -F 'juliaterm_workdir_button' "$layout" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: workdir button did not land in activity_termux.xml" >&2
+        return 1
+    fi
+
+    # 4. Drawer rebrand: aubergine background in BOTH themes, light icon
+    #    tint in the light theme, session titles forced to light text.
+    anchor='<item name="termuxActivityDrawerBackground">@color/white</item>'
+    if [ "$(grep -c -F "$anchor" "$themes" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: light drawer background anchor not found in themes.xml (upstream changed?)" >&2
+        return 1
+    fi
+    portable_sed_i 's|<item name="termuxActivityDrawerBackground">@color/white</item>|<item name="termuxActivityDrawerBackground">@color/juliaterm_launch_background</item>|' "$themes"
+
+    anchor='<item name="termuxActivityDrawerImageTint">@color/black</item>'
+    if [ "$(grep -c -F "$anchor" "$themes" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: light drawer image tint anchor not found in themes.xml (upstream changed?)" >&2
+        return 1
+    fi
+    portable_sed_i 's|<item name="termuxActivityDrawerImageTint">@color/black</item>|<item name="termuxActivityDrawerImageTint">@color/juliaterm_drawer_text</item>|' "$themes"
+
+    anchor='<item name="termuxActivityDrawerBackground">@color/black</item>'
+    if [ "$(grep -c -F "$anchor" "$themesnight" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: night drawer background anchor not found in values-night/themes.xml (upstream changed?)" >&2
+        return 1
+    fi
+    portable_sed_i 's|<item name="termuxActivityDrawerBackground">@color/black</item>|<item name="termuxActivityDrawerBackground">@color/juliaterm_launch_background</item>|' "$themesnight"
+    grep -q 'termuxActivityDrawerBackground">@color/juliaterm_launch_background' "$themes" || {
+        echo "[juliaterm] ERROR: light drawer background rewrite did not land" >&2
+        return 1
+    }
+    grep -q 'termuxActivityDrawerBackground">@color/juliaterm_launch_background' "$themesnight" || {
+        echo "[juliaterm] ERROR: night drawer background rewrite did not land" >&2
+        return 1
+    }
+
+    anchor='android:textSize="14sp"'
+    if [ "$(grep -c -F "$anchor" "$itemxml" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: session title anchor not found exactly once in item_terminal_sessions_list.xml (upstream changed?)" >&2
+        return 1
+    fi
+    awk '{ if (!done && index($0, "android:textSize=\"14sp\"") > 0) { gsub(/ *\/>/, "", $0); print; print "    android:textColor=\"@color/juliaterm_drawer_text\" />"; done = 1 } else print }' "$itemxml" > "$itemxml.jt" && mv "$itemxml.jt" "$itemxml"
+    grep -q 'android:textColor="@color/juliaterm_drawer_text"' "$itemxml" || {
+        echo "[juliaterm] ERROR: session title textColor did not land" >&2
+        return 1
+    }
+
+    echo "[juliaterm] UI phase 2 applied (workdir picker button + dark drawer rebrand)."
+}
+
 patch_apps() {
     apply_patches_filtered "f-droid-patches/app-patches" termux-apps-main "$JULIATERM_SKIP_APP_PATCHES"
-    # JuliaTerm UI customization, BEFORE the name replacement (our inserted
-    # code contains no com.termux references either way).
+    # JuliaTerm UI customization, BEFORE the name replacement: phase 2
+    # copies its picker class in with a deliberate "package com.termux.app"
+    # line so the replacement migrates it with everything else.
     juliaterm_ui_customize
+    juliaterm_ui_customize_phase2
     if [[ "$TERMUX_APP__PACKAGE_NAME" == "com.termux" ]]; then
         return
     fi

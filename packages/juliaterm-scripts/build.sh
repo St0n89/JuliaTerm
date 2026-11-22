@@ -7,7 +7,7 @@ TERMUX_PKG_HOMEPAGE="https://github.com/St0n89/JuliaTerm"
 TERMUX_PKG_DESCRIPTION="Julia REPL wrappers for JuliaTerm (proot Debian + juliaup)"
 TERMUX_PKG_LICENSE="MIT"
 TERMUX_PKG_MAINTAINER="Dennis Kunde @St0n89"
-TERMUX_PKG_VERSION="0.2.1"
+TERMUX_PKG_VERSION="0.3.0"
 TERMUX_PKG_DEPENDS="proot-distro, curl, ca-certificates"
 TERMUX_PKG_PLATFORM_INDEPENDENT=true
 

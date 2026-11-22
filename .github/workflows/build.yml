@@ -7,6 +7,7 @@ on:
       - "build-juliaterm.sh"
       - "packages/**"
       - "patches/**"
+      - "app-src/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
@@ -117,8 +118,8 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.1
-          name: JuliaTerm v0.2.1
+          tag_name: v0.3.0
+          name: JuliaTerm v0.3.0
           files: artifacts/*
           body: |
             JuliaTerm v0.2.1
@@ -149,7 +150,16 @@ jobs:
             - v0.2.1: new `notebook` command - one-command Pluto.jl reactive
               notebook server; auto-installs Pluto on first use, serves the
               phone browser on localhost:8889, notebooks saved in the
-              container's /root (phone-folder integration is phase 2)
+              container's /root (or the v0.3.0 workdir, if one is set)
+            - v0.3.0 UI phase 2: in-app workdir picker. New drawer button
+              "Select workdir" browses the phone's Documents folder
+              (fallback: storage root), requests the storage permission
+              when needed, and saves the choice; the next `julia` or
+              `notebook` binds that folder as /workdir and starts there,
+              so notebooks and scripts land directly in the chosen phone
+              folder. Long-press the button to clear the choice. Drawer
+              rebranded to the dark Julia palette (aubergine background,
+              light session titles and icons).
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

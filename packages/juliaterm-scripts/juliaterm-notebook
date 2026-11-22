@@ -51,11 +51,33 @@ if ! "$JULIA_BIN" -e 'import Pluto' >/dev/null 2>&1; then
         exit 1
     }
 fi
+# v0.3.0: if the host bound a chosen phone folder (drawer picker), save
+# notebooks there.
+if [ -d /workdir ]; then
+    if cd /workdir; then
+        echo "juliaterm: saving notebooks in /workdir (chosen phone folder)."
+    else
+        echo "juliaterm: cannot enter /workdir; notebooks go to /root." >&2
+    fi
+fi
 echo "juliaterm: starting Pluto on http://localhost:8889"
 echo "           open it in your phone browser; keep this terminal running."
-echo "           notebooks are saved in $PWD (the container's /root)."
+echo "           notebooks are saved in $PWD."
 exec "$JULIA_BIN" -e 'import Pluto; Pluto.run(8889; launch_browser=false, dismiss_update_notification=true)'
 EOS
 chmod 755 "$JT_DIR/jtn"
 
+JULIATERM_WORKDIR=""
+if [ -s "$HOME/.juliaterm/workdir" ]; then
+    JULIATERM_WORKDIR="$(head -n1 "$HOME/.juliaterm/workdir" 2>/dev/null | tr -d '\r\n')"
+    if [ -d "$JULIATERM_WORKDIR" ] && [ -x "$JULIATERM_WORKDIR" ]; then
+        echo "juliaterm: workdir: $JULIATERM_WORKDIR (container path: /workdir)"
+    else
+        echo "juliaterm: saved workdir '$JULIATERM_WORKDIR' is not accessible; notebooks go to /root." >&2
+        JULIATERM_WORKDIR=""
+    fi
+fi
+if [ -n "$JULIATERM_WORKDIR" ]; then
+    exec proot-distro login "$DISTRO" --bind "${JULIATERM_WORKDIR}:/workdir" -- /root/.juliaterm/jtn
+fi
 exec proot-distro login "$DISTRO" -- /root/.juliaterm/jtn
