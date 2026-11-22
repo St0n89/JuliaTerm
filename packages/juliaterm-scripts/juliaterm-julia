@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/sh
-# JuliaTerm: start a full Julia REPL.
-# The /data/data/com.termux path below is rewritten to the JuliaTerm package
-# id (com.st0n89.juliaterm) at bootstrap build time by the name-replacement
-# step, so do not "fix" it here.
+# JuliaTerm: start a full Julia REPL in a Debian proot container.
+# Installs rootfs and juliaup on first run, then execs the Julia binary.
+# The /data/data/com.termux prefix below is rewritten to the JuliaTerm package
+# id (com.st0n89.juliaterm) at bootstrap build time, do not "fix" it here.
 set -u
 
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
@@ -41,16 +41,26 @@ JT_DIR="$ROOTFS/root/.juliaterm"
 mkdir -p "$JT_DIR"
 cat > "$JT_DIR/jt" <<'EOS'
 #!/bin/sh
-# JuliaTerm boot script; runs inside the Debian proot as root.
-# Resolve Julia by ABSOLUTE PATH only: proot-distro's login puts the host
-# Termux prefix on PATH inside the guest, so 'command -v julia' would find
-# this app's own wrapper again, which re-enters and calls proot-distro
-# inside the proot -> nested-proot guard aborts it ("attempted to run
-# proot-distro in a proot session", the v0.1.1 on-device failure).
+# JuliaTerm boot script; runs inside the Debian proot container as root.
+# Resolve EVERYTHING by absolute path: proot-distro's login BINDS the host
+# Termux prefix into the guest AND puts it on the guest PATH. Relying on
+# command -v has caused two device-side failures already:
+#  - v0.1.1: 'command -v julia' found this app's own wrapper on the guest
+#    PATH, re-entered proot and tripped proot-distro's nested-proot guard.
+#  - v0.1.2: 'command -v curl' matched the HOST curl, so the apt fallback
+#    never ran and the minimal rootfs had no CA store -> juliaup died with
+#    "No CA certificates were loaded from the system".
+# Check curl and the CA store by absolute path inside the guest only.
 JULIA_BIN="$HOME/.juliaup/bin/julia"
 if [ ! -x "$JULIA_BIN" ]; then
     echo "juliaterm: installing juliaup + Julia (one-time download, ~350 MB)..."
-    command -v curl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -yqq curl ca-certificates; }
+    if [ ! -x /usr/bin/curl ] || [ ! -f /etc/ssl/certs/ca-certificates.crt ]; then
+        apt-get update -qq && apt-get install -yqq curl ca-certificates
+    fi
+    # Belt and braces: juliaup (rustls) reads SSL_CERT_FILE first.
+    if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+    fi
     curl -fsSL https://install.julialang.org | sh -s -- --yes
 fi
 if [ ! -x "$JULIA_BIN" ]; then
