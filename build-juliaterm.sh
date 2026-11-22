@@ -78,11 +78,69 @@ apply_patches_filtered() {
     popd
 }
 
+# JuliaTerm UI customization: anchored rewrites instead of a static diff.
+# Upstream termux-app master drifts within hours, so any hand-written
+# unified-diff context is doomed (run #20: hunk #1 FAILED at 245 + a
+# malformed colors.xml hunk). Each rewrite anchors on a single stable
+# line, is applied with awk/sed, and is verified afterwards; a missing
+# anchor fails the build loudly instead of silently skipping.
+juliaterm_ui_customize() {
+    local act=termux-apps-main/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
+    local colors=termux-apps-main/termux-app/app/src/main/res/values/colors.xml
+    local themes=termux-apps-main/termux-app/app/src/main/res/values/themes.xml
+    local anchor='getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);'
+    local insert
+    local hits
+
+    if [ "$(grep -c -F "$anchor" "$act" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: fullscreen anchor not found exactly once in TermuxActivity.java (upstream changed?)" >&2
+        return 1
+    fi
+
+    # Fully qualified android.view.View.* so no import assumptions are needed.
+    insert='            // JuliaTerm: lean-back immersive; system bars stay hidden until
+            // an edge swipe, then auto-hide again (sticky).
+            getWindow().getDecorView().setSystemUiVisibility(
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN);'
+
+    awk -v ins="$insert" '
+        /getWindow\(\)\.addFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN\);/ { print; print ins; next }
+        { print }' "$act" > "$act.jt" && mv "$act.jt" "$act"
+
+    grep -q 'SYSTEM_UI_FLAG_IMMERSIVE_STICKY' "$act" || {
+        echo "[juliaterm] ERROR: immersive insert did not land in TermuxActivity.java" >&2
+        return 1
+    }
+
+    # colors.xml is an empty stub upstream; write our known-good content.
+    cat > "$colors" <<'EOC'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- JuliaTerm branding: deep aubergine launch/window background. -->
+    <color name="juliaterm_launch_background">#FF150E24</color>
+</resources>
+EOC
+
+    # Swap every black window background for the branding color.
+    sed -i 's|<item name="android:windowBackground">@color/black</item>|<item name="android:windowBackground">@color/juliaterm_launch_background</item>|g' "$themes"
+    grep -q 'juliaterm_launch_background' "$themes" || {
+        echo "[juliaterm] ERROR: windowBackground rewrite did not land in themes.xml" >&2
+        return 1
+    }
+
+    echo "[juliaterm] UI customization applied (immersive fullscreen + launch background)."
+}
+
 patch_apps() {
     apply_patches_filtered "f-droid-patches/app-patches" termux-apps-main "$JULIATERM_SKIP_APP_PATCHES"
-    # JuliaTerm's own app patches, applied BEFORE the termux->juliaterm name
-    # replacement so anything they add is rewritten uniformly as well.
-    apply_patches_filtered "$JULIATERM_HOME/patches/app-patches" termux-apps-main ""
+    # JuliaTerm UI customization, BEFORE the name replacement (our inserted
+    # code contains no com.termux references either way).
+    juliaterm_ui_customize
     if [[ "$TERMUX_APP__PACKAGE_NAME" == "com.termux" ]]; then
         return
     fi
