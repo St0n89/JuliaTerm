@@ -1,0 +1,8 @@
+# JuliaTerm default app config.
+# Copied to ~/.termux/termux.properties on the first interactive shell if
+# the user has no config yet. Keys are stock termux-app runtime properties;
+# edit or delete your copy to customize. Restart the app to apply.
+fullscreen = true
+night-mode = true
+terminal-margin-horizontal = 0
+terminal-margin-vertical = 0

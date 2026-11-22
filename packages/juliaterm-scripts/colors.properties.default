@@ -1,0 +1,22 @@
+# JuliaTerm default terminal colors (dusk palette, Julia-purple accents).
+# Copied to ~/.termux/colors.properties on the first interactive shell if
+# the user has no config yet. Restart the app to apply.
+foreground=#e8e4f0
+background=#131019
+cursor=#9558fc
+color0=#2b2440
+color1=#ff6a6a
+color2=#7ce38b
+color3=#ffca7a
+color4=#7c6ff0
+color5=#c792ea
+color6=#66d9e8
+color7=#d6d2e0
+color8=#4a4166
+color9=#ff9a76
+color10=#a3f0b4
+color11=#ffe0a3
+color12=#a89cf8
+color13=#e3b8ff
+color14=#9ce8f6
+color15=#f4f1fa

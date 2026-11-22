@@ -80,6 +80,9 @@ apply_patches_filtered() {
 
 patch_apps() {
     apply_patches_filtered "f-droid-patches/app-patches" termux-apps-main "$JULIATERM_SKIP_APP_PATCHES"
+    # JuliaTerm's own app patches, applied BEFORE the termux->juliaterm name
+    # replacement so anything they add is rewritten uniformly as well.
+    apply_patches_filtered "$JULIATERM_HOME/patches/app-patches" termux-apps-main ""
     if [[ "$TERMUX_APP__PACKAGE_NAME" == "com.termux" ]]; then
         return
     fi
@@ -106,13 +109,28 @@ cp "$JULIATERM_HOME/patches/builder-name-change.patch" \
 
 patch_bootstraps
 
-# First-run hint, appended after the generator bashrc patches.
+# First-run hint + default UI config, appended after the generator bashrc
+# patches.
 cat >> termux-packages-main/packages/bash/etc-bash.bashrc <<'EOF'
 
 # JuliaTerm: hint until the first successful 'julia' run.
 if [ -t 1 ] && [ ! -e "${HOME}/.juliaterm/installed" ]; then
     printf '%s\n' "JuliaTerm: type 'julia' to set up and start the Julia REPL."
     printf '%s\n' "           (first run downloads a Debian proot rootfs and juliaup, ~350 MB)"
+fi
+
+# JuliaTerm: plant default app UI config (fullscreen, dark, color scheme) on
+# the first interactive shell if the user has none yet. The app reads
+# ~/.termux/termux.properties and ~/.termux/colors.properties at activity
+# start; restart the app once to apply.
+if [ -t 1 ] && [ -d "${PREFIX}/etc/juliaterm" ]; then
+    if [ ! -e "${HOME}/.termux/termux.properties" ] || [ ! -e "${HOME}/.termux/colors.properties" ]; then
+        mkdir -p "${HOME}/.termux"
+        [ -e "${HOME}/.termux/termux.properties" ] || cp "${PREFIX}/etc/juliaterm/termux.properties" "${HOME}/.termux/termux.properties"
+        [ -e "${HOME}/.termux/colors.properties" ] || cp "${PREFIX}/etc/juliaterm/colors.properties" "${HOME}/.termux/colors.properties"
+        printf '%s\n' "JuliaTerm: wrote default UI config to ~/.termux (fullscreen, dark, Julia colors)."
+        printf '%s\n' "           Restart the app once to apply it."
+    fi
 fi
 EOF
 
