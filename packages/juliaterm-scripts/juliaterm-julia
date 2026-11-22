@@ -9,11 +9,10 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 DISTRO=debian
 PD_STATE="$PREFIX/var/lib/proot-distro"
 
-# v0.1.0 bug: it assumed proot-distro keeps rootfs at
-# installed-rootfs/<name>. The shipped proot-distro is 5.10.3 (python),
-# which stores containers at containers/<name>/rootfs, so the jt boot
-# script was written into a ghost directory and the login failed with
-# "/root/.juliaterm/jt: No such file or directory". Support both layouts.
+# proot-distro >= 5.0 stores containers at containers/<name>/rootfs, older
+# versions used installed-rootfs/<name>. v0.1.0 wrote the jt boot script into
+# the old (empty) layout, so the login failed with "No such file or
+# directory". Support both layouts.
 find_rootfs() {
     if [ -d "$PD_STATE/containers/$DISTRO/rootfs" ]; then
         printf '%s\n' "$PD_STATE/containers/$DISTRO/rootfs"
@@ -43,14 +42,22 @@ mkdir -p "$JT_DIR"
 cat > "$JT_DIR/jt" <<'EOS'
 #!/bin/sh
 # JuliaTerm boot script; runs inside the Debian proot as root.
-PATH="$HOME/.juliaup/bin:$PATH"
-export PATH
-if ! command -v julia >/dev/null 2>&1; then
+# Resolve Julia by ABSOLUTE PATH only: proot-distro's login puts the host
+# Termux prefix on PATH inside the guest, so 'command -v julia' would find
+# this app's own wrapper again, which re-enters and calls proot-distro
+# inside the proot -> nested-proot guard aborts it ("attempted to run
+# proot-distro in a proot session", the v0.1.1 on-device failure).
+JULIA_BIN="$HOME/.juliaup/bin/julia"
+if [ ! -x "$JULIA_BIN" ]; then
     echo "juliaterm: installing juliaup + Julia (one-time download, ~350 MB)..."
     command -v curl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -yqq curl ca-certificates; }
     curl -fsSL https://install.julialang.org | sh -s -- --yes
 fi
-exec julia "$@"
+if [ ! -x "$JULIA_BIN" ]; then
+    echo "juliaterm: juliaup install failed (see messages above)." >&2
+    exit 1
+fi
+exec "$JULIA_BIN" "$@"
 EOS
 chmod 755 "$JT_DIR/jt"
 

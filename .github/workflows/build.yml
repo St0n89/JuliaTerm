@@ -56,8 +56,6 @@ jobs:
           df -h / || true
           bash "${GITHUB_WORKSPACE}/build-juliaterm.sh" "${GITHUB_WORKSPACE}/generator" 2>&1 | tee "${RUNNER_TEMP}/build.log"
 
-      # GitHub truncates huge step logs in the web UI (this hid run #9's, #10's
-      # and #11's real endings). This short step prints the crash reason fully.
       - name: Diagnose failure
         if: failure()
         run: |
@@ -70,9 +68,6 @@ jobs:
             echo "build.log not found (step may have failed before tee started)"
           fi
 
-      # Runs #10 and #11 were green but produced ZERO apks anywhere in the
-      # workspace and no release (silent skip). This report runs on success
-      # too and shows the true end state of the build, fully readable.
       - name: Post-build report
         if: always()
         run: |
@@ -95,10 +90,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      # Run #10 was green but found ZERO apks at generator/ root, so artifact
-      # upload and release silently skipped. This step now searches the whole
-      # workspace and reports every .apk path, so the next run shows where the
-      # APKs actually land.
       - name: Collect artifacts
         id: collect
         run: |
@@ -125,11 +116,11 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.1
-          name: JuliaTerm v0.1.1
+          tag_name: v0.1.2
+          name: JuliaTerm v0.1.2
           files: artifacts/*
           body: |
-            JuliaTerm v0.1.1
+            JuliaTerm v0.1.2
 
             Termux-free Julia REPL for Android (aarch64).
 
@@ -138,8 +129,11 @@ jobs:
               (bash, coreutils, curl, proot, proot-distro, juliaterm-scripts)
             - First `julia` run installs Debian proot + juliaup
             - `julia-update` updates Julia via juliaup
-            - v0.1.1: fixes the first `julia` run with current proot-distro
-              (container storage moved to containers/<name>/rootfs)
+            - v0.1.2: fixes the first `julia` run self-recursion: the boot
+              script found this app's own wrapper on the guest PATH (host
+              prefix is bound+on PATH inside the proot) and re-entered
+              proot-distro inside the guest; Julia is now resolved by
+              absolute path ($HOME/.juliaup/bin/julia)
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
