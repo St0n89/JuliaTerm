@@ -6,9 +6,11 @@ set -u
 
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 DISTRO=debian
-ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"
+PD_STATE="$PREFIX/var/lib/proot-distro"
 
-[ -d "$ROOTFS" ] || {
+# proot-distro >= 5.0 stores containers at containers/<name>/rootfs,
+# older versions used installed-rootfs/<name> (see juliaterm-julia).
+[ -d "$PD_STATE/containers/$DISTRO/rootfs" ] || [ -d "$PD_STATE/installed-rootfs/$DISTRO" ] || {
     echo "juliaterm: Debian rootfs not installed yet; run 'julia' first." >&2
     exit 1
 }
