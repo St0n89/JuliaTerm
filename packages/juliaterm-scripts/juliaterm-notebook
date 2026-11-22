@@ -1,0 +1,61 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# JuliaTerm: start a Pluto.jl reactive notebook server inside the Debian
+# proot container. Requires the one-time 'julia' setup (rootfs + juliaup)
+# to have run before. Open the printed URL in your phone browser and keep
+# the terminal running while you work.
+# The /data/data/com.termux prefix below is rewritten to the JuliaTerm
+# package id at bootstrap build time, do not "fix" it here.
+set -u
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DISTRO=debian
+PD_STATE="$PREFIX/var/lib/proot-distro"
+
+# Same layout detection as the julia wrapper: proot-distro >= 5.0 uses
+# containers/<name>/rootfs, older versions installed-rootfs/<name>.
+find_rootfs() {
+    if [ -d "$PD_STATE/containers/$DISTRO/rootfs" ]; then
+        printf '%s\n' "$PD_STATE/containers/$DISTRO/rootfs"
+    elif [ -d "$PD_STATE/installed-rootfs/$DISTRO" ]; then
+        printf '%s\n' "$PD_STATE/installed-rootfs/$DISTRO"
+    fi
+}
+
+command -v proot-distro >/dev/null 2>&1 || {
+    echo "juliaterm: proot-distro not found (broken bootstrap?)" >&2
+    exit 1
+}
+
+ROOTFS="$(find_rootfs)"
+if [ -z "${ROOTFS:-}" ]; then
+    echo "juliaterm: no rootfs yet; run 'julia' first (one-time setup, ~390 MB)." >&2
+    exit 1
+fi
+JT_DIR="$ROOTFS/root/.juliaterm"
+mkdir -p "$JT_DIR"
+cat > "$JT_DIR/jtn" <<'EOS'
+#!/bin/sh
+# JuliaTerm notebook boot script; runs inside the Debian proot as root.
+# Resolve everything by absolute path: proot-distro's login binds the host
+# Termux prefix into the guest AND puts it on the guest PATH (v0.1.1/v0.1.2
+# lesson: never rely on command -v inside the guest).
+JULIA_BIN="$HOME/.juliaup/bin/julia"
+if [ ! -x "$JULIA_BIN" ]; then
+    echo "juliaterm: Julia is not installed yet; run 'julia' first (one-time setup)." >&2
+    exit 1
+fi
+if ! "$JULIA_BIN" -e 'import Pluto' >/dev/null 2>&1; then
+    echo "juliaterm: installing Pluto.jl (one-time download, ~60 MB)..."
+    "$JULIA_BIN" -e 'import Pkg; Pkg.add("Pluto")' || {
+        echo "juliaterm: Pluto installation failed (see output above)." >&2
+        exit 1
+    }
+fi
+echo "juliaterm: starting Pluto on http://localhost:8889"
+echo "           open it in your phone browser; keep this terminal running."
+echo "           notebooks are saved in $PWD (the container's /root)."
+exec "$JULIA_BIN" -e 'import Pluto; Pluto.run(8889; launch_browser=false, dismiss_update_notification=true)'
+EOS
+chmod 755 "$JT_DIR/jtn"
+
+exec proot-distro login "$DISTRO" -- /root/.juliaterm/jtn

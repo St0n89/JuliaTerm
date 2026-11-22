@@ -117,11 +117,11 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.0
-          name: JuliaTerm v0.2.0
+          tag_name: v0.2.1
+          name: JuliaTerm v0.2.1
           files: artifacts/*
           body: |
-            JuliaTerm v0.2.0
+            JuliaTerm v0.2.1
 
             Termux-free Julia REPL for Android (aarch64).
 
@@ -141,12 +141,15 @@ jobs:
               the rootfs; curl and CA store are now checked by absolute path
               inside the guest only
             - v0.2.0 UI phase 1: fullscreen REPL - immersive sticky system
-              bars (status/nav hidden until edge swipe) via a small app
-              patch, deep aubergine launch window background, and default
-              runtime config shipped in the bootstrap (fullscreen = true,
-              night-mode = true, zero terminal margins, Julia dusk color
-              palette); planted to ~/.termux on first shell, applies after
-              one app restart
+              bars (status/nav hidden until edge swipe), deep aubergine
+              launch window background, and default runtime config shipped
+              in the bootstrap (fullscreen = true, night-mode = true, zero
+              terminal margins, Julia dusk color palette); planted to
+              ~/.termux on first shell, applies after one app restart
+            - v0.2.1: new `notebook` command - one-command Pluto.jl reactive
+              notebook server; auto-installs Pluto on first use, serves the
+              phone browser on localhost:8889, notebooks saved in the
+              container's /root (phone-folder integration is phase 2)
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

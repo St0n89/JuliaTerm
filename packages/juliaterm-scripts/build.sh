@@ -7,7 +7,7 @@ TERMUX_PKG_HOMEPAGE="https://github.com/St0n89/JuliaTerm"
 TERMUX_PKG_DESCRIPTION="Julia REPL wrappers for JuliaTerm (proot Debian + juliaup)"
 TERMUX_PKG_LICENSE="MIT"
 TERMUX_PKG_MAINTAINER="Dennis Kunde @St0n89"
-TERMUX_PKG_VERSION="0.2.0"
+TERMUX_PKG_VERSION="0.2.1"
 TERMUX_PKG_DEPENDS="proot-distro, curl, ca-certificates"
 TERMUX_PKG_PLATFORM_INDEPENDENT=true
 
@@ -21,6 +21,7 @@ termux_step_post_get_source() {
 termux_step_make_install() {
 	install -Dm755 "${TERMUX_PKG_BUILDER_DIR}/juliaterm-julia" "${TERMUX_PREFIX}/bin/julia"
 	install -Dm755 "${TERMUX_PKG_BUILDER_DIR}/juliaterm-julia-update" "${TERMUX_PREFIX}/bin/julia-update"
+	install -Dm755 "${TERMUX_PKG_BUILDER_DIR}/juliaterm-notebook" "${TERMUX_PREFIX}/bin/notebook"
 	# Default UI runtime config, planted into ~/.termux by the bashrc hook.
 	install -Dm644 "${TERMUX_PKG_BUILDER_DIR}/termux.properties.default" "${TERMUX_PREFIX}/etc/juliaterm/termux.properties"
 	install -Dm644 "${TERMUX_PKG_BUILDER_DIR}/colors.properties.default" "${TERMUX_PREFIX}/etc/juliaterm/colors.properties"
