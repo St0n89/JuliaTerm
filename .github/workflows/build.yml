@@ -118,8 +118,8 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.0
-          name: JuliaTerm v0.3.0
+          tag_name: v0.3.1
+          name: JuliaTerm v0.3.1
           files: artifacts/*
           body: |
             JuliaTerm v0.2.1
@@ -160,6 +160,11 @@ jobs:
               folder. Long-press the button to clear the choice. Drawer
               rebranded to the dark Julia palette (aubergine background,
               light session titles and icons).
+            - v0.3.1: the workdir picker now browses ALL storage volumes
+              starting from the storage root - internal storage and SD
+              card - with volume labels ("Internal storage", "SD card"),
+              instead of only the Documents folder; any folder on any
+              volume can be chosen as the workdir
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
