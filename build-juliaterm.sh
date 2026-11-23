@@ -143,6 +143,10 @@ EOC
 # chosen phone folder to /workdir, cd there) lives in
 # packages/juliaterm-scripts and reads files/home/.juliaterm/workdir,
 # which the picker writes via Activity.getFilesDir().
+# Since v0.3.1 the picker browses all storage volumes (see app-src/).
+# Note: run #25 failed ~23 min in, mid bootstrap build, with inputs
+# identical to the green runs #23/#24 (only TERMUX_PKG_VERSION differed),
+# so that was presumed transient (cf. run #9).
 # Same discipline as phase 1: every edit pins one stable anchor line,
 # verifies it occurs exactly once, applies the change, and verifies the
 # result. A drifted anchor fails the build loudly.
