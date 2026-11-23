@@ -46,8 +46,22 @@ export DISABLE_BOOT=1 DISABLE_STYLING=1 DISABLE_GUI=1 DISABLE_X11=1
 
 # Trimmed download: termux-packages + termux-app (+ termux-am-library, which
 # termux-app needs as a local project via the local-termux-am-library patch).
+# termux-packages is PINNED: runs #25/#26 (2026-11-23) both died ~23 min
+# into the bootstrap build with inputs identical to the green runs
+# #22/#23/#24 - floating master had picked up a breaking change
+# overnight. The pinned commit (2026-11-22 19:00:47 UTC) is an ancestor
+# of the exact trees all three green runs build against. Bump the pin
+# DELIBERATELY (retest!), never incidentally.
+# termux-app and termux-am-library stay on floating master on purpose:
+# their drift surfaces as our loud anchor failures, and pinning them
+# would freeze the app patches' context instead.
+JULIATERM_TERMUX_PACKAGES_REF=751558c4a54613ca8441d66db846ec94d72096ce
+
 download() {
-    git clone --depth 1 https://github.com/termux/termux-packages.git termux-packages-main
+    git init termux-packages-main
+    git -C termux-packages-main remote add origin https://github.com/termux/termux-packages.git
+    git -C termux-packages-main fetch --depth 1 origin "$JULIATERM_TERMUX_PACKAGES_REF"
+    git -C termux-packages-main checkout FETCH_HEAD
     git clone --depth 1 https://github.com/termux/termux-app.git termux-apps-main/termux-app
     git clone --depth 1 https://github.com/termux/termux-am-library.git termux-apps-main/termux-am-library
     mv termux-apps-main/termux-am-library/termux-am-library/ termux-apps-main/termux-app/termux-am-library
