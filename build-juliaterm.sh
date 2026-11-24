@@ -158,12 +158,14 @@ EOC
 # packages/juliaterm-scripts and reads files/home/.juliaterm/workdir,
 # which the picker writes via Activity.getFilesDir().
 # Since v0.3.1 the picker browses all storage volumes (see app-src/).
-# Note: run #25 failed ~23 min in, mid bootstrap build, with inputs
-# identical to the green runs #23/#24 (only TERMUX_PKG_VERSION differed),
-# so that was presumed transient (cf. run #9).
-# Same discipline as phase 1: every edit pins one stable anchor line,
-# verifies it occurs exactly once, applies the change, and verifies the
-# result. A drifted anchor fails the build loudly.
+# v0.3.2: picker volume probing no longer gates on /storage being
+# listable (it is not on several devices); and a second drawer button
+# "Start notebook" runs 'notebook' in a fresh session and opens the
+# Pluto page in the browser when the server is up (JuliaTerm-
+# NotebookLauncher). Same discipline as phase 1: every edit pins one
+# stable anchor line, verifies it occurs exactly once, applies the
+# change, and verifies the result. A drifted anchor fails the build
+# loudly.
 juliaterm_ui_customize_phase2() {
     local app=termux-apps-main/termux-app
     local act="$app/app/src/main/java/com/termux/app/TermuxActivity.java"
@@ -173,16 +175,18 @@ juliaterm_ui_customize_phase2() {
     local themesnight="$app/app/src/main/res/values-night/themes.xml"
     local insert hits anchor line nextline
 
-    # 1. Picker class: shipped whole in this repo (a new file needs no
-    #    diff, so it cannot drift). Copied in BEFORE the name replacement:
-    #    its "package com.termux.app" line and its directory are migrated
-    #    with the rest of the tree.
-    if [ ! -f "$JULIATERM_HOME/app-src/JuliaTermWorkdirDialog.java" ]; then
-        echo "[juliaterm] ERROR: app-src/JuliaTermWorkdirDialog.java is missing" >&2
-        return 1
-    fi
-    cp "$JULIATERM_HOME/app-src/JuliaTermWorkdirDialog.java" \
-        "$app/app/src/main/java/com/termux/app/"
+    # 1. App classes: shipped whole in this repo (new files need no
+    #    diff, so they cannot drift). Copied in BEFORE the name
+    #    replacement: their "package com.termux.app" lines and their
+    #    directory are migrated with the rest of the tree.
+    for juliaterm_class in JuliaTermWorkdirDialog JuliaTermNotebookLauncher; do
+        if [ ! -f "$JULIATERM_HOME/app-src/${juliaterm_class}.java" ]; then
+            echo "[juliaterm] ERROR: app-src/${juliaterm_class}.java is missing" >&2
+            return 1
+        fi
+        cp "$JULIATERM_HOME/app-src/${juliaterm_class}.java" \
+            "$app/app/src/main/java/com/termux/app/"
+    done
 
     # 2. Terminal hook: wire the drawer button where the keyboard toggle
     #    is set up (anchor: the method signature line).
@@ -199,10 +203,37 @@ juliaterm_ui_customize_phase2() {
         findViewById(R.id.juliaterm_workdir_button).setOnLongClickListener(v -> {
             JuliaTermWorkdirDialog.clear(TermuxActivity.this);
             return true;
+        });
+        // JuliaTerm: notebook launcher button - run "notebook" in a fresh
+        // session (addNewSession makes it the current one), write the
+        // command to the pty, wait for Pluto on localhost:8889, open the
+        // browser. If the session cap hit instead, nothing is written.
+        findViewById(R.id.juliaterm_notebook_button).setOnClickListener(v -> {
+            com.termux.terminal.TerminalSession before = getCurrentSession();
+            String beforeHandle = before == null ? null : before.mHandle;
+            mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+            com.termux.terminal.TerminalSession after = getCurrentSession();
+            if (after != null && !java.util.Objects.equals(after.mHandle, beforeHandle)) {
+                after.write("notebook" + System.lineSeparator());
+                JuliaTermNotebookLauncher.launch(TermuxActivity.this);
+            }
+            getDrawer().closeDrawers();
         });'
     awk -v ins="$insert" '/private void setToggleKeyboardView\(\) \{/ { print; print ins; next } { print }' "$act" > "$act.jt" && mv "$act.jt" "$act"
     if [ "$(grep -c -F 'JuliaTermWorkdirDialog.show(TermuxActivity.this)' "$act" || true)" != "1" ]; then
         echo "[juliaterm] ERROR: workdir button hook did not land in TermuxActivity.java" >&2
+        return 1
+    fi
+    if [ "$(grep -c -F 'JuliaTermNotebookLauncher.launch(TermuxActivity.this)' "$act" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: notebook button hook did not land in TermuxActivity.java" >&2
+        return 1
+    fi
+    # Guard: awk -v parses escape sequences, so any backslash in the
+    # insert text would have been mangled (e.g. a real newline inside a
+    # Java string literal). The insert text must stay backslash-free,
+    # and this line must have landed as ONE line.
+    if [ "$(grep -c -F 'after.write("notebook" + System.lineSeparator());' "$act" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: notebook pty write line did not land intact (backslash gotcha?)" >&2
         return 1
     fi
 
@@ -226,10 +257,21 @@ juliaterm_ui_customize_phase2() {
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Select workdir"
+                    android:textColor="@color/juliaterm_drawer_text" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/juliaterm_notebook_button"
+                    style="?android:attr/buttonBarButtonStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Start notebook"
                     android:textColor="@color/juliaterm_drawer_text" />'
     awk -v ins="$insert" -v at="$((line + 2))" 'NR == at { print ins } { print }' "$layout" > "$layout.jt" && mv "$layout.jt" "$layout"
     if [ "$(grep -c -F 'juliaterm_workdir_button' "$layout" || true)" != "1" ]; then
         echo "[juliaterm] ERROR: workdir button did not land in activity_termux.xml" >&2
+        return 1
+    fi
+    if [ "$(grep -c -F 'juliaterm_notebook_button' "$layout" || true)" != "1" ]; then
+        echo "[juliaterm] ERROR: notebook button did not land in activity_termux.xml" >&2
         return 1
     fi
 

@@ -2,24 +2,32 @@ package com.termux.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
+import android.os.Build;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
 import android.widget.ArrayAdapter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import android.widget.Toast;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * JuliaTerm: in-app workdir picker.
  *
- * Opens a directory browser starting at the storage root, so every volume
- * (internal storage and SD card) can be browsed and any folder can be
- * picked as the container workdir. The chosen absolute path is saved to
- * files/home/.juliaterm/workdir, where the 'julia' and 'notebook' wrappers
- * pick it up at the next start and bind the folder to /workdir in the
- * Debian proot container (and cd there).
+ * Opens a volume chooser (internal storage, SD card; via /storage listing
+ * with an android StorageManager fallback), then a directory browser in
+ * the chosen volume. Any folder can be picked as the container workdir;
+ * its absolute path is saved to files/home/.juliaterm/workdir, where the
+ * 'julia' and 'notebook' wrappers pick it up at the next start and bind
+ * the folder to /workdir in the Debian proot container (and cd there).
+ *
+ * v0.3.2 lesson: do NOT gate on File("/storage") being listable - on
+ * several devices (seen on /e/OS, Fairphone 6) the storage root itself
+ * is not writable/listable for apps even with all-files access, while
+ * the volumes below it are fully accessible. Probe volumes directly.
  *
  * This file is copied into the tree BEFORE the generator's name
  * replacement runs (see build-juliaterm.sh), so the package line below
@@ -31,8 +39,8 @@ import java.util.List;
  */
 public final class JuliaTermWorkdirDialog {
 
-    /** Storage root; lists all volumes (internal storage, SD card, ...). */
-    private static final String BASE_DIR = "/storage";
+    private static final String INTERNAL_DIR = "/storage/emulated/0";
+    private static final String STORAGE_ROOT = "/storage";
 
     /** Where the choice is stored, relative to the files dir (= $PREFIX). */
     private static final String WORKDIR_REL_PATH = "home/.juliaterm/workdir";
@@ -40,13 +48,16 @@ public final class JuliaTermWorkdirDialog {
     /** Current picker dialog, so navigating dismisses the previous level. */
     private static AlertDialog sDialog;
 
+    /** Volume list for the chooser level (refreshed on every show()). */
+    private static List<File> sVolumes = new ArrayList<>();
+
     private JuliaTermWorkdirDialog() {
     }
 
     /** Show the picker. Call from the drawer's "Select workdir" button. */
     public static void show(Activity activity) {
-        File base = new File(BASE_DIR);
-        if (!base.isDirectory() || !base.canRead()) {
+        sVolumes = listVolumes(activity);
+        if (sVolumes.isEmpty()) {
             if (activity instanceof TermuxActivity) {
                 ((TermuxActivity) activity).requestStoragePermission(false);
             }
@@ -55,7 +66,7 @@ public final class JuliaTermWorkdirDialog {
                 + " Android settings, then open the picker again.");
             return;
         }
-        showLevel(activity, base, base);
+        showVolumes(activity);
     }
 
     /** Long-press on the drawer button: forget the saved workdir. */
@@ -68,53 +79,127 @@ public final class JuliaTermWorkdirDialog {
         }
     }
 
-    private static void showLevel(final Activity activity, final File dir, final File base) {
-        final boolean atRoot = dir.getAbsolutePath().equals(base.getAbsolutePath());
+    /**
+     * Accessible volumes: the internal one, then everything listed under
+     * /storage (if the root is listable), then anything StorageManager
+     * reports (API 30+) that is not already in the list.
+     */
+    private static List<File> listVolumes(Activity activity) {
+        List<File> volumes = new ArrayList<>();
+        File internal = new File(INTERNAL_DIR);
+        if (internal.isDirectory() && internal.canRead()) {
+            volumes.add(internal);
+        }
+        File[] children = new File(STORAGE_ROOT).listFiles();
+        if (children != null) {
+            for (File child : children) {
+                String name = child.getName();
+                if (name.equals("emulated") || name.equals("self")) {
+                    continue;
+                }
+                if (child.isDirectory() && !containsPath(volumes, child)) {
+                    volumes.add(child);
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                StorageManager sm =
+                    (StorageManager) activity.getSystemService(Context.STORAGE_SERVICE);
+                if (sm != null) {
+                    for (StorageVolume volume : sm.getStorageVolumes()) {
+                        File dir = volume.getDirectory();
+                        if (dir == null
+                                || !dir.getAbsolutePath().startsWith(STORAGE_ROOT + "/")
+                                || !dir.isDirectory()
+                                || !dir.canRead()) {
+                            continue;
+                        }
+                        if (!containsPath(volumes, dir)) {
+                            volumes.add(dir);
+                        }
+                    }
+                }
+            } catch (Exception ignore) {
+                // StorageManager is only a fallback; ignore any failure.
+            }
+        }
+        return volumes;
+    }
 
+    private static boolean containsPath(List<File> volumes, File dir) {
+        for (File volume : volumes) {
+            if (volume.getAbsolutePath().equals(dir.getAbsolutePath())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String labelFor(File volume) {
+        if (volume.getAbsolutePath().equals(INTERNAL_DIR)) {
+            return "Internal storage";
+        }
+        return "SD card (" + volume.getName() + ")";
+    }
+
+    /** First level: the volume chooser. */
+    private static void showVolumes(final Activity activity) {
+        final List<File> volumes = sVolumes;
+        List<String> labels = new ArrayList<>();
+        for (File volume : volumes) {
+            labels.add(labelFor(volume));
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        builder.setTitle("Storage");
+        builder.setAdapter(new ArrayAdapter<>(activity,
+            android.R.layout.simple_list_item_1, labels), (dialog, which) ->
+                showLevel(activity, volumes.get(which), volumes.get(which)));
+
+        builder.setNegativeButton(android.R.string.cancel, null);
+        if (sDialog != null && sDialog.isShowing()) {
+            sDialog.dismiss();
+        }
+        sDialog = builder.show();
+    }
+
+    /** Browser level inside one volume. Back out of the volume returns
+     *  to the chooser. */
+    private static void showLevel(final Activity activity, final File dir, final File volume) {
         final List<File> targets = new ArrayList<>();
         List<String> labels = new ArrayList<>();
         File[] entries = dir.listFiles();
         if (entries != null) {
-            List<String> names = new ArrayList<>();
             for (File entry : entries) {
                 if (entry.isDirectory()) {
-                    names.add(entry.getName());
+                    targets.add(entry);
+                    labels.add(entry.getName());
                 }
             }
-            Collections.sort(names);
-            for (String name : names) {
-                File target = new File(dir, name);
-                if (atRoot) {
-                    if (name.equals("emulated")) {
-                        // Jump straight into the internal volume.
-                        File inner = new File(dir, "emulated/0");
-                        targets.add(inner.isDirectory() ? inner : target);
-                        labels.add("Internal storage");
-                        continue;
-                    }
-                    // Any other entry below /storage is a physical volume
-                    // (SD card, USB OTG); label it as such.
-                    targets.add(target);
-                    labels.add("SD card (" + name + ")");
-                    continue;
+        }
+        // Keep the label/target pairs sorted by label.
+        for (int i = 0; i < labels.size(); i++) {
+            for (int j = i + 1; j < labels.size(); j++) {
+                if (labels.get(j).compareTo(labels.get(i)) < 0) {
+                    String ls = labels.set(i, labels.get(j));
+                    labels.set(j, ls);
+                    File fs = targets.set(i, targets.get(j));
+                    targets.set(j, fs);
                 }
-                targets.add(target);
-                labels.add(name);
             }
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-        builder.setTitle(titleFor(dir, base));
+        builder.setTitle(dir.getAbsolutePath());
         if (targets.isEmpty()) {
-            builder.setMessage(atRoot
-                ? "No storage volumes found."
-                : "No subfolders here. You can still select this folder.");
+            builder.setMessage("No subfolders here. You can still select this folder.");
         } else {
             builder.setAdapter(new ArrayAdapter<>(activity,
                 android.R.layout.simple_list_item_1, labels), (dialog, which) -> {
                 File child = targets.get(which);
                 if (child.canRead()) {
-                    showLevel(activity, child, base);
+                    showLevel(activity, child, volume);
                 } else {
                     toast(activity, "Cannot open " + child.getName()
                         + " (not readable).");
@@ -122,19 +207,19 @@ public final class JuliaTermWorkdirDialog {
             });
         }
 
-        if (atRoot) {
-            // A volume root itself makes no sense as a workdir; pick a
-            // volume first.
-            if (!targets.isEmpty()) {
-                builder.setMessage("Choose a storage location.");
-            }
+        builder.setPositiveButton("Select here", (dialog, which) ->
+            saveWorkdir(activity, dir));
+        if (dir.getAbsolutePath().equals(volume.getAbsolutePath())) {
+            builder.setNeutralButton("Up", (dialog, which) ->
+                showVolumes(activity));
         } else {
-            builder.setPositiveButton("Select here", (dialog, which) ->
-                saveWorkdir(activity, dir));
-            File up = upFrom(dir, base);
+            File parent = dir.getParentFile();
+            final File up = parent != null
+                && parent.getAbsolutePath().startsWith(volume.getAbsolutePath())
+                ? parent : null;
             if (up != null) {
                 builder.setNeutralButton("Up", (dialog, which) ->
-                    showLevel(activity, up, base));
+                    showLevel(activity, up, volume));
             }
         }
         builder.setNegativeButton(android.R.string.cancel, null);
@@ -143,33 +228,6 @@ public final class JuliaTermWorkdirDialog {
             sDialog.dismiss();
         }
         sDialog = builder.show();
-    }
-
-    /**
-     * The level above dir, or null at the root. The internal volume's
-     * parent (/storage/emulated) is skipped so "Up" jumps straight back
-     * to the volume list.
-     */
-    private static File upFrom(File dir, File base) {
-        File parent = dir.getParentFile();
-        if (parent == null) {
-            return null;
-        }
-        if (parent.getAbsolutePath().equals("/storage/emulated")) {
-            parent = base;
-        }
-        if (!parent.getAbsolutePath().equals(base.getAbsolutePath())
-                && !parent.getAbsolutePath().startsWith(base.getAbsolutePath())) {
-            return null;
-        }
-        return parent;
-    }
-
-    private static String titleFor(File dir, File base) {
-        if (dir.getAbsolutePath().equals(base.getAbsolutePath())) {
-            return "Storage";
-        }
-        return dir.getAbsolutePath();
     }
 
     private static void saveWorkdir(Activity activity, File dir) {

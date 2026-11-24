@@ -118,8 +118,8 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.1
-          name: JuliaTerm v0.3.1
+          tag_name: v0.3.2
+          name: JuliaTerm v0.3.2
           files: artifacts/*
           body: |
             JuliaTerm v0.2.1
@@ -165,6 +165,15 @@ jobs:
               card - with volume labels ("Internal storage", "SD card"),
               instead of only the Documents folder; any folder on any
               volume can be chosen as the workdir
+            - v0.3.2: picker volume probing no longer requires the
+              /storage root itself to be listable (it is not on some
+              devices, e.g. /e/OS on Fairphone; volumes are now probed
+              directly with an android StorageManager fallback); new
+              drawer button "Start notebook" - runs the `notebook`
+              command in a fresh terminal session and opens the Pluto
+              page in the browser as soon as the server on localhost:8889
+              is up (also works later as a plain "reopen notebooks"
+              shortcut while the server runs)
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
