@@ -148,8 +148,8 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.2
-          name: JuliaTerm v0.3.2
+          tag_name: v0.3.3
+          name: JuliaTerm v0.3.3
           files: artifacts/*
           body: |
             JuliaTerm v0.2.1
@@ -204,6 +204,14 @@ jobs:
               page in the browser as soon as the server on localhost:8889
               is up (also works later as a plain "reopen notebooks"
               shortcut while the server runs)
+            - v0.3.3: fixed the `notebook` command with current Pluto.jl
+              versions - Pluto.run() became keyword-only and requires the
+              port as `port=8889`; the wrapper now tries the new form first
+              and falls back to the old positional-port call. It also
+              disables Pluto's new URL-secret requirement
+              (require_secret_for_access=false) so the plain
+              http://localhost:8889 page keeps working in the phone
+              browser and the app's "Start notebook" button.
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

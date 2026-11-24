@@ -63,7 +63,21 @@ fi
 echo "juliaterm: starting Pluto on http://localhost:8889"
 echo "           open it in your phone browser; keep this terminal running."
 echo "           notebooks are saved in $PWD."
-exec "$JULIA_BIN" -e 'import Pluto; Pluto.run(8889; launch_browser=false, dismiss_update_notification=true)'
+# Pluto >= 0.20 changed run() to keyword-only arguments, and has
+# require_secret_for_access=true by default, which would break the plain
+# http://localhost:8889 URL that this app opens. Try the new form first,
+# fall back to the old positional-port signature for older Pluto installs.
+exec "$JULIA_BIN" -e 'try
+    import Pluto
+    Pluto.run(port=8889, launch_browser=false, dismiss_update_notification=true,
+              require_secret_for_access=false, require_secret_for_open_links=false)
+catch e
+    if e isa MethodError
+        Pluto.run(8889; launch_browser=false, dismiss_update_notification=true)
+    else
+        rethrow()
+    end
+end'
 EOS
 chmod 755 "$JT_DIR/jtn"
 
