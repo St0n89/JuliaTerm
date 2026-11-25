@@ -1,0 +1,213 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# JuliaTerm file browser: serves a small page on localhost:8890 (pure Julia
+# stdlib, inside the Debian proot container) that lists the workdir
+# (fallback: container /root) recursively, filterable in the browser; every
+# .jl entry links straight into Pluto (its open?path=... endpoint), so
+# local notebooks can be found and opened with one tap. Requires the
+# one-time 'julia' setup; the links only work while the notebook server
+# (the 'notebook' command) is running - the page shows a banner if it is
+# not. Keep this terminal running while you browse; close with Ctrl+C.
+# The /data/data/com.termux prefix below is rewritten to the JuliaTerm
+# package id at bootstrap build time, do not "fix" it here.
+set -u
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DISTRO=debian
+PD_STATE="$PREFIX/var/lib/proot-distro"
+
+# Same layout detection as the julia wrapper: proot-distro >= 5.0 uses
+# containers/<name>/rootfs, older versions installed-rootfs/<name>.
+find_rootfs() {
+    if [ -d "$PD_STATE/containers/$DISTRO/rootfs" ]; then
+        printf '%s\n' "$PD_STATE/containers/$DISTRO/rootfs"
+    elif [ -d "$PD_STATE/installed-rootfs/$DISTRO" ]; then
+        printf '%s\n' "$PD_STATE/installed-rootfs/$DISTRO"
+    fi
+}
+
+command -v proot-distro >/dev/null 2>&1 || {
+    echo "juliaterm: proot-distro not found (broken bootstrap?)" >&2
+    exit 1
+}
+
+ROOTFS="$(find_rootfs)"
+if [ -z "${ROOTFS:-}" ]; then
+    echo "juliaterm: no rootfs yet; run 'julia' first (one-time setup, ~390 MB)." >&2
+    exit 1
+fi
+JT_DIR="$ROOTFS/root/.juliaterm"
+mkdir -p "$JT_DIR"
+cat > "$JT_DIR/jtf" <<'EOS'
+#!/bin/sh
+# JuliaTerm file browser boot script; runs inside the Debian proot as root.
+# Sends a pure-stdlib Julia HTTP server (Sockets only) that renders the
+# recursive file listing, so no extra Julia packages are ever installed.
+JULIA_BIN="$HOME/.juliaup/bin/julia"
+if [ ! -x "$JULIA_BIN" ]; then
+    echo "juliaterm: Julia is not installed yet; run 'julia' first (one-time setup)." >&2
+    exit 1
+fi
+BASE=/root
+if [ -d /workdir ]; then
+    BASE=/workdir
+fi
+exec "$JULIA_BIN" -e 'import Sockets
+const BASE = abspath(ARGS[1])
+const PLUTO_URL = "http://localhost:8889"
+const LISTEN_PORT = UInt16(8890)
+const LIMIT = 3000
+const CACHE = Ref{Vector{String}}(String[])
+const TRUNC = Ref{Bool}(false)
+
+# HTML for display, percent-encoding for the Pluto link; both must stay
+# free of surprises when file names carry spaces, umlauts or markup chars.
+esc_html(s) = replace(replace(replace(string(s), "&" => "&amp;"), "<" => "&lt;"), ">" => "&gt;")
+const SAFE = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~/"
+function esc_url(s)
+    out = IOBuffer()
+    for b in codeunits(String(s))
+        c = Char(b)
+        if occursin(c, SAFE)
+            print(out, c)
+        else
+            print(out, "%", uppercase(string(Int(b), base=16, pad=2)))
+        end
+    end
+    String(take!(out))
+end
+
+# Recursive listing, bounded; hidden entries and symlinked dirs are skipped
+# (cycle safety), unreadable directories are skipped without abort.
+function walk!(dir, out)
+    try
+        for name in readdir(dir)
+            startswith(name, ".") && continue
+            p = joinpath(dir, name)
+            if isdir(p)
+                if islink(p)
+                    continue
+                end
+                walk!(p, out)
+                TRUNC[] && return
+            else
+                push!(out, p)
+                length(out) >= LIMIT && (TRUNC[] = true; return)
+            end
+        end
+    catch e
+        # unreadable directory: skip it, keep the rest of the walk
+    end
+    nothing
+end
+function rebuild!()
+    out = String[]
+    TRUNC[] = false
+    walk!(BASE, out)
+    sort!(out)
+    CACHE[] = out
+end
+rebuild!()
+
+function pluto_up()
+    try
+        s = Sockets.connect(Sockets.IPv4("127.0.0.1"), UInt16(8889))
+        close(s)
+        true
+    catch e
+        false
+    end
+end
+
+filterjs = """
+document.getElementById("f").addEventListener("input", function() {
+  var t = this.value.toLowerCase()
+  document.querySelectorAll("div.file").forEach(function(el) {
+    el.style.display = el.textContent.toLowerCase().indexOf(t) >= 0 ? "" : "none"
+  })
+})
+"""
+
+function render()
+    q = Char(34)
+    rows = IOBuffer()
+    for p in CACHE[]
+        rel = esc_html(relpath(p, BASE))
+        if endswith(p, ".jl")
+            print(rows, "<div class=file><a href=", q, PLUTO_URL, "/open?path=", esc_url(p), q, ">", rel, "</a></div>")
+        else
+            print(rows, "<div class=file><span class=dim>", rel, "</span></div>")
+        end
+    end
+    note = pluto_up() ? "Pluto is running: notebook links open directly." : "Pluto is not running: start it with the notebook command first, then refresh."
+    tr = TRUNC[] ? string("<div class=note>Listing truncated at ", LIMIT, " files.</div>") : ""
+    string(
+        "<!doctype html><html><head><meta charset=utf-8>",
+        "<meta name=viewport content=", q, "width=device-width, initial-scale=1", q, ">",
+        "<title>JuliaTerm files</title><style>",
+        "body{background:#150E24;color:#E8E3F3;font-family:system-ui,sans-serif;margin:1rem}",
+        "input{width:100%;box-sizing:border-box;padding:.6rem;font-size:1rem;background:#241a3f;color:inherit;border:1px solid #4a3a6e;border-radius:6px}",
+        ".file{padding:.35rem 0;border-bottom:1px solid #241a3f;word-break:break-all}",
+        "a{color:#9d8cff;text-decoration:none}.dim{color:#8d84a8}.note{margin:.7rem 0;color:#8d84a8;line-height:1.5}",
+        "h1{font-size:1.1rem;margin-bottom:.3rem}",
+        "</style></head><body>",
+        "<h1>JuliaTerm files</h1>",
+        "<div class=note>", esc_html(BASE), " &#183; <a href=?refresh=1>refresh</a><br>", note, "</div>",
+        tr,
+        "<input id=f placeholder=filter autocomplete=off>",
+        String(take!(rows)),
+        "<script>", filterjs, "</script>",
+        "</body></html>")
+end
+
+server = Sockets.listen(Sockets.IPv4("127.0.0.1"), LISTEN_PORT)
+println("juliaterm: file browser on http://localhost:8890")
+println("juliaterm: open it in your phone browser; keep this terminal running. Ctrl+C stops it.")
+
+while true
+    sock = Sockets.accept(server)
+    try
+        line1 = readline(sock)
+        if isempty(line1)
+            close(sock)
+            continue
+        end
+        while true
+            h = replace(readline(sock), "\r" => "")
+            h == "" && break
+        end
+        parts = split(line1)
+        target = length(parts) >= 2 ? parts[2] : "/"
+        ok = target == "/" || startswith(target, "/?")
+        if !ok
+            body = "<!doctype html><html><body><h1>404</h1></body></html>"
+            status = "404 Not Found"
+        else
+            occursin("refresh", target) && rebuild!()
+            body = render()
+            status = "200 OK"
+        end
+        write(sock, "HTTP/1.1 $(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: $(ncodeunits(body))\r\nConnection: close\r\n\r\n")
+        write(sock, body)
+    catch e
+        # one bad request never kills the server; serve the next one
+    finally
+        close(sock)
+    end
+end' "$BASE"
+EOS
+chmod 755 "$JT_DIR/jtf"
+
+JULIATERM_WORKDIR=""
+if [ -s "$HOME/.juliaterm/workdir" ]; then
+    JULIATERM_WORKDIR="$(head -n1 "$HOME/.juliaterm/workdir" 2>/dev/null | tr -d '\r\n')"
+    if [ -d "$JULIATERM_WORKDIR" ] && [ -x "$JULIATERM_WORKDIR" ]; then
+        echo "juliaterm: workdir: $JULIATERM_WORKDIR (container path: /workdir)"
+    else
+        echo "juliaterm: saved workdir '$JULIATERM_WORKDIR' is not accessible; listing /root." >&2
+        JULIATERM_WORKDIR=""
+    fi
+fi
+if [ -n "$JULIATERM_WORKDIR" ]; then
+    exec proot-distro login "$DISTRO" --bind "${JULIATERM_WORKDIR}:/workdir" -- /root/.juliaterm/jtf
+fi
+exec proot-distro login "$DISTRO" -- /root/.juliaterm/jtf

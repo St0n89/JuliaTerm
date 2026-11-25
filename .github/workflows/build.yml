@@ -148,8 +148,8 @@ jobs:
         if: steps.collect.outputs.count != '0'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.3
-          name: JuliaTerm v0.3.3
+          tag_name: v0.3.4
+          name: JuliaTerm v0.3.4
           files: artifacts/*
           body: |
             JuliaTerm v0.2.1
@@ -212,6 +212,14 @@ jobs:
               (require_secret_for_access=false) so the plain
               http://localhost:8889 page keeps working in the phone
               browser and the app's "Start notebook" button.
+            - v0.3.4: new `files` command - a small pure-Julia-stdlib
+              file browser served on localhost:8890 inside the container:
+              it lists the chosen workdir (fallback: container /root)
+              recursively in the phone browser, filters live while you
+              type, and links every notebook straight into the running
+              Pluto server (open?path=...), so local notebooks can be
+              searched and opened with one tap. A banner shows when the
+              notebook server is not running yet.
             - Debug-signed (Termux test key). Install via sideloading.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
